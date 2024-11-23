@@ -1,0 +1,173 @@
+---
+- hosts: servers
+  become: true
+  gather_facts: true
+  tasks:
+  - name: install softs on CentOS
+    yum:
+      name:
+        - nano
+        - chrony
+      state: present
+      update_cache: true
+
+  #Включение firewalld и удаление его из автозагрузки
+  - name: enable firewalld
+    service:
+      name: firewalld
+      state: started
+      enabled: true
+
+  - name: add ports for firewalld
+    ansible.posix.firewalld:
+      zone: public
+      port: "{{ item }}"
+      permanent: true
+      immediate: true
+      state: enabled
+    with_items:
+      - 53/tcp
+      - 53/udp
+      - 80/tcp
+      - 443/tcp
+      - 88/tcp
+      - 88/udp
+      - 464/tcp
+      - 464/udp
+      - 123/udp
+      - 389/tcp
+      - 636/tcp
+
+  #Отключение SElinux из автозагрузки
+  #Будет применено после перезагрузки
+  - name: disable SElinux
+    selinux:
+      state: disabled
+
+  #Отключение SElinux до перезагрузки
+  - name: disable SElinux now
+    shell: setenforce 0
+
+  #Установка временной зоны Европа/Москва
+  - name: Set up timezone
+    timezone:
+      name: "Europe/Moscow"
+
+  #Запуск службы Chrony, добавление её в автозагрузку
+  - name: enable chrony
+    service:
+      name: chronyd
+      state: restarted
+      enabled: true
+
+  #Копирование файла /etc/hosts c правами root:root 0644
+  - name: change /etc/hosts
+    template:
+      src: servers.j2
+      dest: /etc/hosts
+      owner: root
+      group: root
+      mode: 0644
+
+  #Установка клиента Freeipa
+  - name: install module ipa-server
+    yum:
+      name:
+        - "@idm:DL1"
+        - ipa-server
+      state: present
+      update_cache: true
+
+  #Запуск скрипта добавления хоста к серверу
+  - name: install ipa-server
+    shell: ipa-server-install --hostname={{ ipa_server }} --domain={{ ipa_domain }} --realm={{ ipa_domain }} --ds-password={{ ipa_passwd }} --admin-password={{ ipa_passwd }} --netbios-name={{ ipa_netbios }} --no-ntp --unattended --ssh-trust-dns
+
+
+
+###############################
+- name: Base set up clients
+  hosts: clients
+  become: yes
+  tasks:
+  - name: install softs on CentOS
+    yum:
+      name:
+        - nano
+        - chrony
+      state: present
+      update_cache: true
+
+  #Включение firewalld и удаление его из автозагрузки
+  - name: enable firewalld
+    service:
+      name: firewalld
+      state: started
+      enabled: true
+
+  - name: add ports for firewalld
+    ansible.posix.firewalld:
+      zone: public
+      port: "{{ item }}"
+      permanent: true
+      immediate: true
+      state: enabled
+    with_items:
+      - 53/tcp
+      - 53/udp
+      - 80/tcp
+      - 443/tcp
+      - 88/tcp
+      - 88/udp
+      - 464/tcp
+      - 464/udp
+      - 123/udp
+      - 389/tcp
+      - 636/tcp
+
+  #Отключение SElinux из автозагрузки
+  #Будет применено после перезагрузки
+  - name: disable SElinux
+    selinux:
+      state: disabled
+
+  #Отключение SElinux до перезагрузки
+  - name: disable SElinux now
+    shell: setenforce 0
+
+  #Установка временной зоны Европа/Москва    
+  - name: Set up timezone
+    timezone:
+      name: "Europe/Moscow"
+
+  #Запуск службы Chrony, добавление её в автозагрузку
+  - name: enable chrony
+    service:
+      name: chronyd
+      state: restarted
+      enabled: true
+
+  #Копирование файла /etc/hosts c правами root:root 0644
+  - name: change /etc/hosts
+    template:
+      src: hosts.j2
+      dest: /etc/hosts
+      owner: root
+      group: root
+      mode: 0644
+
+  #Установка клиента Freeipa
+  - name: install module ipa-client
+    yum:
+      name:
+        - freeipa-client
+      state: present
+      update_cache: true
+
+  #Запуск скрипта добавления хоста к серверу
+  - name: add host to ipa-server
+    shell: echo -e "yes\nyes" | ipa-client-install --mkhomedir --domain={{ ipa_domain }}  --server={{ ipa_server }} --no-ntp -p admin -w {{ ipa_passwd }} --ssh-trust-dns
+
+
+
+
+
